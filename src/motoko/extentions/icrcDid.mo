@@ -148,7 +148,7 @@ module icrcDid = {
       ) -> async TransferResult;
     rewriteAsset : shared (Text, Asset) -> async ?Nat;
     streamAsset : shared (Nat, Bool, [Nat8]) -> async ();
-    transferFromCanister : shared (User, Nat) -> async TransferResult;
+    transferFromCanister : shared (AccountIdentifier, Nat) -> async TransferResult;
     transferFromCanisterToPrincipal : shared (
         Text,
         ?Subaccount,

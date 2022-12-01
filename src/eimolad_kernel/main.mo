@@ -36,6 +36,7 @@ import leather "../motoko/extentions/leatherDid";
 import eBronze "../motoko/extentions/eBronzeDid";
 import Nft "../motoko/extentions/nftDid";
 import icrcDid "../motoko/extentions/icrcDid";
+import v2 "../motoko/extentions/ext20v2Did";
 import TokenCanister "../motoko/extentions/tokenCanisterDid";
 
 
@@ -169,6 +170,66 @@ actor class EimoladKernel() = this {
     };
 
   //==============================================================================
+  //==============================================================================
+    // ICRC-1 Wallets 
+    public shared(msg) func account_balance_icrc(canisterId : Text, account : icrcDid.User) : async icrcDid.Balance {
+      let canister : icrcDid.icrcActor = actor(canisterId);
+      return await canister.eimolad_balance(account);
+      };
+
+    public shared func this_balance_icrc(canisterId : Text) : async icrcDid.Balance {
+      let canister : icrcDid.icrcActor = actor(canisterId);
+      let usr : icrcDid.User = #principal({owner = Principal.fromActor(this);subaccount = null});
+      return await canister.eimolad_balance(usr);
+      };
+
+    public shared(msg) func transfer_icrc(canisterId : Text, tr : icrcDid.Eimolad_ICRC1_Transfer) : async icrcDid.TransferResult {
+      let canister : icrcDid.icrcActor = actor(canisterId);
+      return await canister.eimolad_icrc1_transfer(tr); 
+      };
+
+      public shared (msg) func transfer_icrc_1_token (canisterId : Text, from_owner : Text, from_subaccount : [Nat8], to_subaccount : [Nat8], amount : Nat) : async icrcDid.TransferResult { //to subacc
+        let owner = AID.fromPrincipal(msg.caller, ?from_subaccount); 
+        assert(msg.caller == Principal.fromText(from_owner)); 
+        let canister : icrcDid.icrcActor = actor(canisterId);
+        let args : icrcDid.Eimolad_ICRC1_Transfer = {
+          from = #principal({owner = Principal.fromText(from_owner); subaccount = ?from_subaccount});
+          to = #address(AID.fromPrincipal(msg.caller, ?to_subaccount));
+          amount = amount;
+          fee = null;
+          memo = null;
+          created_at_time = null;
+          };
+        let tr = await canister.eimolad_icrc1_transfer(args);
+       };
+
+       public shared (msg) func transferToken (canisterId : CanisterIdentifier, from_owner : Text, from_subaccount : [Nat8], to : AccountIdentifier, amount : Nat) : async icrcDid.TransferResult { //to other
+        let owner = AID.fromPrincipal(msg.caller, ?from_subaccount); 
+        assert(msg.caller == Principal.fromText(from_owner)); 
+        let canister : icrcDid.icrcActor = actor(canisterId);
+        let args : icrcDid.Eimolad_ICRC1_Transfer = {
+          from = #principal({owner = Principal.fromText(from_owner); subaccount = ?from_subaccount});
+          to = #address(to);
+          amount = amount;
+          fee = null;
+          memo = null;
+          created_at_time = null;
+          };
+        let tr = await canister.eimolad_icrc1_transfer(args);
+       };
+
+       private func rewardStaking(canisterId : Text, to : AccountIdentifier, amount : Nat) : async Result.Result<Nat, Text> {
+        let canister : icrcDid.icrcActor = actor(canisterId);
+        let b = await canister.transferFromCanister(to, amount);
+        switch (b) {
+          case (#Ok balance){
+            return #ok(balance);
+            };
+          case (#Err err){return #err("Error")};
+        };  
+      };
+    //==============================================================================
+
   // Work functions
   type Time = Time.Time;
   type TokenIdentifier = Text;
@@ -286,112 +347,6 @@ actor class EimoladKernel() = this {
   private var _stakeOre : HashMap.HashMap<TokenIdentifier, StakeOre> = HashMap.fromIter(_stakeOreState.vals(), 0, Text.equal, Text.hash); //Стейкинг руды
   private stable var _stakeAditState : [(TokenIdentifier, StakeAdit)] = [];
   private var _stakeAdit : HashMap.HashMap<TokenIdentifier, StakeAdit> = HashMap.fromIter(_stakeAditState.vals(), 0, Text.equal, Text.hash); //Стейкинг камня
-
-  public shared(msg) func transfer_tokens(tokenName : Text, to : AccountIdentifier, amount: Nat) : async Result.Result<Text, Text>{ // универсальный трансфер валюты
-    var owner : AccountIdentifier = "";
-    if (AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == AID.fromPrincipal(Principal.fromText("xocga-4vh64-bidcg-3uxjz-fffxn-exbj4-mgbvl-hlnv6-5syll-ghhkw-eqe"), ?AID.SUBACCOUNT_ZERO)) {
-      owner := AID.fromPrincipal(Principal.fromActor(this), ?AID.SUBACCOUNT_ZERO);
-    } 
-    else{  owner := AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO);};
-    if (tokenName == "gold"){
-      let args : eGold.TransferRequest = 
-      {
-        to = #address(to);
-        token = "";
-        notify = false;
-        from = #address(owner);
-        memo = [];
-        subaccount = ?AID.SUBACCOUNT_ZERO;
-        amount = amount;
-    };
-      let b = await transfer_eGold(args);
-      return #ok("successful eGold transfer!");
-    }
-    else if (tokenName == "ore"){
-      let args : eOre.TransferRequest = 
-      {
-        to = #address(to);
-        token = "";
-        notify = false;
-        from = #address(owner);
-        memo = [];
-        subaccount = ?AID.SUBACCOUNT_ZERO;
-        amount = amount;
-    };
-      let b = await transfer_eOre(args);
-    return #ok("successful eOre transfer!");
-    }
-    else if (tokenName == "coal"){
-      let args : eCoal.TransferRequest = 
-      {
-        to = #address(to);
-        token = "";
-        notify = false;
-        from = #address(owner);
-        memo = [];
-        subaccount = ?AID.SUBACCOUNT_ZERO;
-        amount = amount;
-    };
-      let b = await transfer_eCoal(args);
-    return #ok("successful eCoal transfer!");
-    }
-    else if (tokenName == "adit"){
-   let args : eAdit.TransferRequest = 
-      {
-        to = #address(to);
-        token = "";
-        notify = false;
-        from = #address(owner);
-        memo = [];
-        subaccount = ?AID.SUBACCOUNT_ZERO;
-        amount = amount;
-    };
-      let b = await transfer_eAdit(args);
-    return #ok("successful eAdit transfer!");
-    }
-    else if (tokenName == "lgs"){
-   let args : lgs.TransferRequest = 
-      {
-        to = #address(to);
-        token = "";
-        notify = false;
-        from = #address(owner);
-        memo = [];
-        subaccount = ?AID.SUBACCOUNT_ZERO;
-        amount = amount;
-    };
-      let b = await transfer_lgs(args);
-    return #ok("successful lgs transfer!");
-    }
-     else if (tokenName == "leather"){
-   let args : leather.TransferRequest = 
-      {
-        to = #address(to);
-        token = "leather";
-        notify = false;
-        from = #address(owner);
-        memo = [];
-        subaccount = ?AID.SUBACCOUNT_ZERO;
-        amount = amount;
-    };
-      let b = await transfer_leather(args);
-    return #ok("successful leather transfer!");
-    }
-     else if (tokenName == "bronze"){
-   let args : eBronze.Eimolad_ICRC1_Transfer = 
-      {
-        to = #address(to);
-        fee = null;
-        from = #address(owner);
-        memo = null;
-        created_at_time = null;
-        amount = amount;
-    };
-      let b = await transfer_eBronze(args);
-    return #ok("successful eBronze transfer!");
-    }
-    else {return #err("Error")}
-};
 
   public func getTokenOwner(nftc: Collections) : async AccountIdentifier { // made it public
     switch nftc {
@@ -664,6 +619,220 @@ public shared(msg) func setStatus() : async (){ // fix of states
   private func transfer_weapons(tr : Weapons.TransferRequest) : async Weapons.TransferResponse {
     return await Weapons.Weapons.transfer(tr); 
   };
+
+  let SUBACCOUNT_STAKING : [Nat8] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3];
+  private func _transferStakingSubAcc (tid : TokenIdentifier, caller : Principal, flag : Bool) : async Result.Result<Nat, v2.TransferResponse>  { // if true = tranfer to 3sub else if false = transfer from 3 to 0 sub
+    let owner = await newGetTokenOwner(tid);
+    let ledger = await getNftLedger(tid);
+    let canister : Nft.nftActor = actor (ledger);
+    var toSubacc : [Nat8] = [];
+    var fromSubacc : [Nat8] = [];
+    switch (flag){
+      case(true){
+        toSubacc := SUBACCOUNT_STAKING;
+        fromSubacc := AID.SUBACCOUNT_ZERO;
+        };
+      case(false){
+        toSubacc := AID.SUBACCOUNT_ZERO;
+        fromSubacc := SUBACCOUNT_STAKING;
+      };
+    };
+    let args : v2.TransferRequest = {
+      to = #address(AID.fromPrincipal(caller, ?toSubacc));
+      token = tid;
+      notify = false;
+      from = #address(owner);
+      memo = [];
+      subaccount = ?fromSubacc;
+      amount = 1;
+    };
+    let tr = await canister.transfer(args);
+    switch (tr) {
+      case(#ok ok) {return #ok (ok)};
+      case (#err err) {return #err(#err(err))};
+    };
+  };
+  private func _validate_staking (tid : TokenIdentifier, stakingName : Text, caller : Principal) : async Result.Result<Text, Text> {
+    if (stakingName == "gold"){
+      switch(_stake.get(tid)) {
+        case(?st){
+          let charState = await getNftState(st.character.tid);
+          let weaponState = await getNftState(st.weapon.tid);
+          let charOwner = await newGetTokenOwner(st.character.tid);
+          let wpOwner = await newGetTokenOwner(st.weapon.tid);
+          let owner = (AID.fromPrincipal(caller, ?SUBACCOUNT_STAKING));
+          if (charState != "stake" or weaponState != "stake" or charOwner != owner or wpOwner != owner){
+            let b = await unStake(tid);
+            switch (b){
+              case (#ok ok) {return #err(ok)};
+              case (_){return #err("")};
+            };
+          }
+          else {return #ok("Alright in gold")};
+        };
+        case(_){return #err("Can't find gold pair")};
+      };
+    } else if (stakingName == "ore") {
+       switch(_stakeOre.get(tid)) {
+        case(?st){
+          let charState = await getNftState(st.character.tid);
+          let weaponState = await getNftState(st.weapon.tid);
+          let charOwner = await newGetTokenOwner(st.character.tid);
+          let wpOwner = await newGetTokenOwner(st.weapon.tid);
+          let owner = (AID.fromPrincipal(caller, ?SUBACCOUNT_STAKING));
+          if (charState != "stake" or weaponState != "stake" or charOwner != owner or wpOwner != owner){
+            let b = await unStakeOre(tid);
+            switch (b){
+              case (#ok ok) {return #ok(ok)};
+              case (_){return #err("")};
+            };
+          }
+          else {return #ok("Allright in ore")};
+        };
+        case(_){return #err("Can't find ore pair")};
+      };
+    } else if (stakingName == "adit") {
+       switch(_stakeAdit.get(tid)) {
+        case(?st){
+          let charState = await getNftState(st.character.tid);
+          let weaponState = await getNftState(st.weapon.tid);
+          let charOwner = await newGetTokenOwner(st.character.tid);
+          let wpOwner = await newGetTokenOwner(st.weapon.tid);
+          let owner = (AID.fromPrincipal(caller, ?SUBACCOUNT_STAKING));
+          if (charState != "stake" or weaponState != "stake" or charOwner != owner or wpOwner != owner){
+            let b = await unStakeAdit(tid);
+            switch (b){
+              case (#ok ok) {return #ok(ok)};
+              case (_){return #err("")};
+            };
+          }
+          else {return #ok("Allright in adit")};
+        };
+        case(_){return #err("Can't find adit pair")};
+      };
+    } else if (stakingName == "coal") {
+       switch(_stakeOre.get(tid)) {
+        case(?st){
+          let weapon_1_State = await getNftState(st.character.tid);
+          let weapon_2_State = await getNftState(st.weapon.tid);
+          let wp_1_Owner = await newGetTokenOwner(st.character.tid);
+          let wp_2_Owner = await newGetTokenOwner(st.weapon.tid);
+          let owner = (AID.fromPrincipal(caller, ?SUBACCOUNT_STAKING));
+          if (weapon_1_State != "stake" or weapon_2_State != "stake" or wp_1_Owner != owner or wp_2_Owner != owner){
+            let b = await unStakeCoal(tid);
+            switch (b){
+              case (#ok ok) {return #ok(ok)};
+              case (_){return #err("")};
+            };
+          }
+          else {return #ok("Allright in coal")};
+        };
+        case(_){return #err("Can't find coal pair")};
+      };
+    } else return #err("didn't check pairs");
+  };
+  public shared(msg) func transfer_stakings (nfts : [TokenIdentifier]) : async Result.Result<AccountIdentifier, Text> {      
+    for (nft in nfts.vals()) {
+      let owner = await newGetTokenOwner(nft);
+      assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == owner);
+      let ledger = await getNftLedger(nft);
+      let canister : Nft.nftActor = actor (ledger);
+      let args : v2.TransferRequest = {
+        to = #address(AID.fromPrincipal(msg.caller, ?SUBACCOUNT_STAKING));
+        token = nft;
+        notify = false;
+        from = #address(owner);
+        memo = [];
+        subaccount = ?AID.SUBACCOUNT_ZERO;
+        amount = 1;
+      };
+      switch(_characters.get(nft)) {
+        case(?ch){
+          if (ch.state == "stake"){
+            let tr = await canister.transfer(args);
+            switch (tr) {
+              case(#ok b){
+                switch (_stake.get(nft)){
+                  case(?st){
+                    _stake.put(st.character.tid, {
+                      character = st.character;
+                      weapon = st.weapon;
+                      aid = AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO);
+                      startStaketime = st.startStaketime;
+                      lastClaimTime = st.lastClaimTime;
+                      eGold_amount = st.eGold_amount;
+                      rarityRate = st.rarityRate;  
+                      rank = st.rank;
+                    });
+                  };
+                  case(_){
+                    switch (_stakeOre.get(nft)){
+                      case(?stO){
+                        _stakeOre.put(stO.character.tid, {
+                          character = stO.character;
+                          weapon = stO.weapon;
+                          aid = AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO);
+                          startStaketime = stO.startStaketime;
+                          lastClaimTime = stO.lastClaimTime;
+                          eOre_amount = stO.eOre_amount;
+                          rank = stO.rank;
+                        });
+                      };
+                      case (_){
+                        switch (_stakeAdit.get(nft)){
+                          case(?stA){
+                            _stakeAdit.put(stA.character.tid, {
+                              character = stA.character;
+                              weapon = stA.weapon;
+                              aid = AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO);
+                              startStaketime = stA.startStaketime;
+                              lastClaimTime = stA.lastClaimTime;
+                              eAdit_amount = stA.eAdit_amount;
+                             });
+                          };
+                          case(_){return #err("Can't find staked pair" # " А" # nft)}
+                        };
+                      };
+                    };
+                  };
+                };
+              };
+              case(#err err){};
+            };
+          };
+        };
+        case(_){};
+      };
+      switch(_weapons.get(nft)) {
+        case(?wp){
+          if (wp.state == "stake"){
+            let tr = await canister.transfer(args);
+            switch (tr){
+              case(#ok b){
+                switch (_stakeCoal.get(nft)){
+                  case(?stC){
+                    _stakeCoal.put(stC.weapon_1.tid, {
+                      weapon_1 = stC.weapon_1;
+                      weapon_2 = stC.weapon_2;
+                      aid = AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO);
+                      startStaketime = stC.startStaketime;
+                      lastClaimTime = stC.lastClaimTime;
+                      eCoal_amount = stC.eCoal_amount;
+                      rank = stC.rank;
+                      });
+                  };
+                  case(_){};
+                };
+              };
+              case(#err err){};
+            };  
+          };
+        };
+        case(_){};
+      };
+    };
+    return #ok(AID.fromPrincipal(msg.caller, ?SUBACCOUNT_STAKING));
+  };
   //==============================================================================
 
   //===================================COALSTAKING================================
@@ -671,10 +840,10 @@ public shared(msg) func setStatus() : async (){ // fix of states
     Iter.toArray(_stakeCoal.entries());
   };
 
-  public shared(msg) func setStakeCoal(st : StakeCoal) : async () {
+  public shared(msg) func setStakeCoal(st : StakeCoal) : async Result.Result<Text, Text> {
     let owner = await getTokenOwner(#weapons(st.weapon_1.tid));
     assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == owner);
-    assert (st.weapon_1.tid != st.weapon_2.tid); // проверить работает ли ассерт
+    assert (st.weapon_1.tid != st.weapon_2.tid);
     switch (_weapons.get(st.weapon_1.tid)) {
       case (?wp) {
         _weapons.put(st.weapon_1.tid, {
@@ -684,9 +853,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
           state = "stake";
         });
      };
-      case (_) {
-        return ();
-      };
+      case (_) {};
     };
     switch (_weapons.get(st.weapon_2.tid)) {
       case (?wp) {
@@ -697,16 +864,17 @@ public shared(msg) func setStatus() : async (){ // fix of states
           state = "stake";
         });
       };
-      case (_) {
-        return ();
-      };
+      case (_) {};
     };
     _stakeCoal.put(st.weapon_1.tid, st);
+    let trWp = await _transferStakingSubAcc(st.weapon_1.tid, msg.caller, true);
+    let trChar = await _transferStakingSubAcc(st.weapon_2.tid, msg.caller, true);
+    let v = await _validate_staking(st.weapon_1.tid, "coal", msg.caller);
   };
 
-  public shared(msg) func unStakeCoal(token : TokenIdentifier) : async () { //Новый анстейк
-    let owner = await getTokenOwner(#weapons(token));
-    assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == owner); 
+  public shared(msg) func unStakeCoal(token : TokenIdentifier) : async Result.Result<Text, ()> { //Новый анстейк
+    let owner = await newGetTokenOwner(token);
+    assert(AID.fromPrincipal(msg.caller, ?SUBACCOUNT_STAKING) == owner); 
     switch (_stakeCoal.get(token)){
       case (?st){
         switch(_weapons.get(st.weapon_1.tid)){
@@ -717,6 +885,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
               ledgerCanister = wp.ledgerCanister;
               state = "wrapped";
             });
+            let trWp1 = await _transferStakingSubAcc(st.weapon_1.tid, msg.caller, false);
           };
           case(_){};
         };
@@ -728,6 +897,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
               ledgerCanister = wp.ledgerCanister;
               state = "wrapped";
             });
+            let trWp2 = await _transferStakingSubAcc(st.weapon_2.tid, msg.caller, false);
           };
           case(_){};
         };
@@ -735,6 +905,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
       case(_){};
     };
     _stakeCoal.delete(token);
+    return #ok("coal pair has unstaked")
   };
 
   public shared(msg) func getStakeCoalFromAID (): async [StakeCoal] { //функция получения записей стекинга по АИД
@@ -792,7 +963,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
     Iter.toArray(_stakeOre.entries());
   };
 
-  public shared(msg) func setStakeOre(st : StakeOre) : async () {
+  public shared(msg) func setStakeOre(st : StakeOre) : async Result.Result<Text, Text> {
     let owner = await getTokenOwner(#dwarves(st.character.tid));
     assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == owner);
     var weapon_rarity : Text = "";
@@ -812,9 +983,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
           state = "stake";
         });
       };
-      case (_) {
-        return ();
-      };
+      case (_) {};
     };
     switch (_characters.get(st.character.tid)) {
       case (?ch) {
@@ -829,17 +998,18 @@ public shared(msg) func setStatus() : async (){ // fix of states
         rarityRate = ch.rarityRate;
         });
       };
-      case (_) {
-        return ();
-      }; 
+      case (_) {}; 
   };
     _stakeOre.put(st.character.tid, st);
+    let trWp = await _transferStakingSubAcc(st.weapon.tid, msg.caller, true);
+    let trChar = await _transferStakingSubAcc(st.character.tid, msg.caller, true);
+    let v = await _validate_staking(st.character.tid, "ore", msg.caller);
   };
 
 
-  public shared(msg) func unStakeOre(token : TokenIdentifier) : async () { 
-    let owner = await getTokenOwner(#dwarves(token));
-    assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == owner); 
+  public shared(msg) func unStakeOre(token : TokenIdentifier) : async Result.Result<Text, ()> { 
+    let owner = await newGetTokenOwner(token);
+    assert(AID.fromPrincipal(msg.caller, ?SUBACCOUNT_STAKING) == owner); 
     switch (_stakeOre.get(token)){
       case (?st){
         switch(_weapons.get(st.weapon.tid)){
@@ -850,6 +1020,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
               ledgerCanister = wp.ledgerCanister;
               state = "wrapped";
             });
+          let trWp = await _transferStakingSubAcc(st.weapon.tid, msg.caller, false);
           };
           case(_){};
         };
@@ -865,6 +1036,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
             equipment = ch.equipment;
             rarityRate = ch.rarityRate;
             });
+          let trChar = await _transferStakingSubAcc(st.character.tid, msg.caller, false);
           };
           case (_) {}; 
       };
@@ -872,6 +1044,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
       case(_){};
     };
     _stakeOre.delete(token);
+    return #ok("ore pair has unstaked")
   };
 
   public shared(msg) func getStakeOreFromAID (): async [StakeOre] { //функция получения записей стекинга по АИД
@@ -928,7 +1101,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
     Iter.toArray(_stakeAdit.entries());
   };
 
-  public shared(msg) func setStakeAdit(st : StakeAdit) : async () {
+  public shared(msg) func setStakeAdit(st : StakeAdit) : async Result.Result<Text, Text> {
     let owner = await getTokenOwner(#dwarves(st.character.tid));
     assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == owner);
     var weapon_rarity : Text = "";
@@ -948,9 +1121,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
           state = "stake";
         });
       };
-      case (_) {
-        return ();
-      };
+      case (_) {};
     };
     switch (_characters.get(st.character.tid)) {
       case (?ch) {
@@ -965,17 +1136,18 @@ public shared(msg) func setStatus() : async (){ // fix of states
         rarityRate = ch.rarityRate;
         });
       };
-      case (_) {
-        return ();
-      }; 
+      case (_) {}; 
   };
     _stakeAdit.put(st.character.tid, st);
+    let trWp = await _transferStakingSubAcc(st.weapon.tid, msg.caller, true);
+    let trChar = await _transferStakingSubAcc(st.character.tid, msg.caller, true);
+    let v = await _validate_staking(st.character.tid, "adit", msg.caller);
   };
 
 
-  public shared(msg) func unStakeAdit(token : TokenIdentifier) : async () { 
-    let owner = await getTokenOwner(#dwarves(token));
-    assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == owner); 
+  public shared(msg) func unStakeAdit(token : TokenIdentifier) : async Result.Result<Text, ()> { 
+    let owner = await newGetTokenOwner(token);
+    assert(AID.fromPrincipal(msg.caller, ?SUBACCOUNT_STAKING) == owner); 
     switch (_stakeAdit.get(token)){
       case (?st){
         switch(_weapons.get(st.weapon.tid)){
@@ -986,6 +1158,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
               ledgerCanister = wp.ledgerCanister;
               state = "wrapped";
             });
+          let trWp = await _transferStakingSubAcc(st.weapon.tid, msg.caller, false);
           };
           case(_){};
         };
@@ -1001,6 +1174,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
             equipment = ch.equipment;
             rarityRate = ch.rarityRate;
             });
+          let trChar = await _transferStakingSubAcc(st.character.tid, msg.caller, false);
           };
           case (_) {}; 
       };
@@ -1008,6 +1182,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
       case(_){};
     };
     _stakeAdit.delete(token);
+    return #ok("adit pair has unstaked")
   };
 
   public shared(msg) func getStakeAditFromAID (): async [StakeAdit] { //функция получения записей стекинга по АИД
@@ -1064,10 +1239,10 @@ public shared(msg) func setStatus() : async (){ // fix of states
     Iter.toArray(_stake.entries());
   };
 
-  public shared(msg) func setStake(st : Stake) : async () {
-    let owner = await getTokenOwner(#dwarves(st.character.tid));
+  public shared(msg) func setStake(st : Stake) : async Result.Result<Text, Text> {
+    let owner = await newGetTokenOwner(st.character.tid);
     assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == owner);
-    var nri : RarityRate = 0; // hz mojno li tak
+    var nri : RarityRate = 0;
     switch (_weapons.get(st.weapon.tid)) {
       case (?wp) {
         _weapons.put(st.weapon.tid, {
@@ -1077,9 +1252,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
           state = "stake";
         });
       };
-      case (_) {
-        return ();
-      };
+      case (_){};
     };
     switch (_characters.get(st.character.tid)) {
       case (?ch) {
@@ -1095,9 +1268,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
         rarityRate = ch.rarityRate;
         });
       };
-      case (_) {
-        return ();
-    }; 
+      case (_){}; 
   };
     var rarity = await rateFromRarity(nri);
     _stake.put(st.character.tid, {
@@ -1110,11 +1281,14 @@ public shared(msg) func setStatus() : async (){ // fix of states
       rarityRate = rarity;  
       rank = st.rank;
     });
+    let trWp = await _transferStakingSubAcc(st.weapon.tid, msg.caller, true);
+    let trChar = await _transferStakingSubAcc(st.character.tid, msg.caller, true);
+    let v = await _validate_staking(st.character.tid, "gold", msg.caller); // проверка верности данных
   };
 
-  public shared(msg) func unStake(token : TokenIdentifier) : async () { //Новый анстейк
-    let owner = await getTokenOwner(#dwarves(token));
-    assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == owner); 
+  public shared(msg) func unStake(token : TokenIdentifier) : async Result.Result<Text, ()> { //Новый анстейк
+    let owner = await newGetTokenOwner(token);
+    assert(AID.fromPrincipal(msg.caller, ?SUBACCOUNT_STAKING) == owner); 
     switch (_stake.get(token)){
       case (?st){
         switch(_weapons.get(st.weapon.tid)){
@@ -1125,6 +1299,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
               ledgerCanister = wp.ledgerCanister;
               state = "wrapped";
             });
+          let trWp = await _transferStakingSubAcc(st.weapon.tid, msg.caller, false);
           };
           case(_){};
         };
@@ -1140,13 +1315,15 @@ public shared(msg) func setStatus() : async (){ // fix of states
             equipment = ch.equipment;
             rarityRate = ch.rarityRate;
             });
+          let trChar = await _transferStakingSubAcc(st.character.tid, msg.caller, false);
           };
-          case (_) {}; 
+          case (_){}; 
         };
       };
       case(_){};
     };
     _stake.delete(token);
+    return #ok("gold pair has unstaked")
   };
   public shared(msg) func wrap (tokens : [TokenIdentifier]) : async Result.Result<Text, ()> { //пакетный wrap
     for (tokenId in tokens.vals()){
@@ -1266,7 +1443,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
   private func checkDay() : async(){
     for ((tid, en) in _stake.entries()){
        var t : Time = Time.now();
-       var claimTime : Time = 24 * 60 * 60 * 1000 * 1000 * 1000;//86400000000000;
+       var claimTime : Time = 24 * 60 * 60 * 1000 * 1000 * 1000;//86400000000000; // 
        var daysOfLastClaim = await textToNat(Int.toText(Int.div((Time.now() - en.lastClaimTime), claimTime)));
 
       if (daysOfLastClaim >= 1) {
@@ -1289,81 +1466,45 @@ public shared(msg) func setStatus() : async (){ // fix of states
     };
     return ();  
   };
-  
-  private func claimTokens(to : AccountIdentifier, amount : eGold.Balance) : async Result.Result<Text, ()> {
-    let args : eGold.TransferRequest = {
-      to = #address(to);
-      token = "";
-      notify = false;
-      from = #principal(Principal.fromActor(this));
-      memo = [];
-      subaccount = ?AID.SUBACCOUNT_ZERO;
-      amount = amount;
-    };
-    let b = await transfer_eGold(args);
+
+  private func claimTokens(to : AccountIdentifier, amount : icrcDid.Balance) : async Result.Result<Text, ()> {
+    let b = await rewardStaking("vendt-zaaaa-aaaan-qaw5a-cai", to, amount);
     return #ok("successfully delivered tokens");
   };
-
-  public shared(msg) func transferMany(to : AccountIdentifier, tokens : [TokenIdentifier], subaccount : Dwarves.SubAccount) : async Result.Result<Text, Dwarves.TransferResponse> { // пакетный трансфер
+  
+  public shared(msg) func transferMany(to : AccountIdentifier, tokens : [TokenIdentifier], subaccount : v2.SubAccount) : async Result.Result<Text, v2.TransferResponse> { // пакетный трансфер
     var _tokens : [TokenIdentifier] = [];
     _tokens := Array.append(_tokens, tokens);
     for (tokenId in _tokens.vals()){
-      let owner_dw = await getTokenOwner(#dwarves(tokenId));
-      let owner_wp = await getTokenOwner(#weapons(tokenId));
-      if (owner_dw != "0000"){
-        assert(AID.fromPrincipal(msg.caller, ?subaccount) == owner_dw);
-        switch (_characters.get(tokenId)){
-          case (?ch) {
-          if (ch.state == "none") {
-            let args : Dwarves.TransferRequest = {
-              to = #address(to);
-              token = tokenId;
-              notify = false;
-              from = #address(owner_dw);
-              memo = [];
-              subaccount = ?subaccount;
-              amount = 1;
-              };
-            let b = await transfer_dwarves(args);
-            switch (b) {
-              case (#ok balance){if (balance == 0) {_tokens := Array.append(_tokens, [tokenId])}};
-              case (#err err){return #err(#err(err))};
-            };
-            };
-          };
-          case(_){
-            return #err(#err(#Other("no tid")));
-          };
+      let owner = await newGetTokenOwner(tokenId);
+      assert(AID.fromPrincipal(msg.caller, ?subaccount) == owner);
+      let state = await getNftState(tokenId);
+      let ledger = await getNftLedger(tokenId);
+      let canister : Nft.nftActor = actor (ledger);
+      if (state == "none") {
+      let args : v2.TransferRequest = {
+        to = #address(to);
+        token = tokenId;
+        notify = false;
+        from = #address(owner);
+        memo = [];
+        subaccount = ?subaccount;
+        amount = 1;
         };
-      }
-      else if (owner_wp != "0000"){
-        assert(AID.fromPrincipal(msg.caller, ?subaccount) == owner_wp);
-        switch (_weapons.get(tokenId)){
-          case (?wp) {
-            if (wp.state == "none") {
-              let args : Weapons.TransferRequest = {
-                to = #address(to);
-                token = tokenId;
-                notify = false;
-                from = #address(owner_wp);
-                memo = [];
-                subaccount = ?subaccount;
-                amount = 1;
-              };
-              let b = await transfer_weapons(args);
-              switch (b) {
-                case (#ok balance){if (balance == 0) {_tokens := Array.append(_tokens, [tokenId])}};
-                case (#err err){return #err(#err(err))};
-              };
-            };
-          };
-          case(_){
-            return #err(#err(#Other("no tid")));
-          };
-        };
+      let b = await canister.transfer(args);
+      switch (b) {
+        case (#ok balance){if (balance == 0) {_tokens := Array.append(_tokens, [tokenId])}};
+        case (#err err){return #err(#err(err))};
+      };
       };
     };
   return #ok("successful package transfer");
+  };
+
+  private func getNftLedger (tid : TokenIdentifier) : async Text {
+    let canisterBlob = Core.TokenIdentifier.decode(tid).canister;
+    let ledger = Principal.toText(Principal.fromBlob(Blob.fromArray(canisterBlob)));
+    return ledger;
   };
   //==============================================================================
 
@@ -1476,7 +1617,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
   private func getDefaultAttributes (race : Text) : Text {
     var t : Text = "";
     if (race == "dwarves") {
-      t := "{\"experience\": 0,\"level\": 1,\"strength\": 50,\"attack\" : 50,\"st_resist\" : 5,\"hp_regen\" : 2.5,\"dexterity\" : 30,\"attack_speed\" : 30, \"evasion\" : 3,\"accuracy\" : 3,\"intelligence\" : 40,\"m_attack\" : 40,\"mp_regen\" : 2,\"move_speed\" : 80,\"initial_attack_speed\" : 600,\"initial_evasion\" : 0,\"initial_ accuracy\" : 70,\"critical_chance\" : 0,\"spell_speed\" : 0,\"cooldown\" : 0,\"defence\" : 0, \"m_resist\" : 0,\"set_bonus\" : 0}";
+      t := "{\"experience\": 0,\"level\": 1,\"hp\": 500,\"strength\": 50,\"attack\" : 50,\"st_resist\" : 5,\"hp_regen\" : 2.5,\"dexterity\" : 30,\"attack_speed\" : 30, \"evasion\" : 3,\"accuracy\" : 3,\"intelligence\" : 40,\"m_attack\" : 40,\"mp\": 400,\"mp_regen\" : 2,\"move_speed\" : 80,\"initial_attack_speed\" : 600,\"initial_evasion\" : 0,\"initial_ accuracy\" : 70,\"critical_chance\" : 0,\"spell_speed\" : 0,\"cooldown\" : 0,\"defence\" : 0, \"m_resist\" : 0,\"set_bonus\" : 0}";
     };
     return t;
   };
@@ -1507,7 +1648,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
     };
 
   public shared(msg) func changeName(tid : TokenIdentifier, name : Text, subaccount : [Nat8]) : async Result.Result<Text, CommonError>{
-    let owner = await getTokenOwner(#dwarves(tid));
+    let owner = await newGetTokenOwner(tid);
     assert(AID.fromPrincipal(msg.caller, ?subaccount) == owner);
     switch (_userAccount.get(tid)){
       case(?userData){
@@ -1524,9 +1665,24 @@ public shared(msg) func setStatus() : async (){ // fix of states
     };
   };
 
+  private func getNftState (tid : TokenIdentifier) : async Text {
+    let ledger = await getNftLedger(tid);
+    if (ledger == "ri5pt-5iaaa-aaaan-qactq-cai"){
+      switch (_characters.get(tid)){
+        case(?ch){ch.state};
+        case(_){"null"};
+      } 
+    }
+    else if (ledger == "n6bj5-ryaaa-aaaan-qaaqq-cai") {
+      switch (_weapons.get(tid)){
+        case(?wp){wp.state};
+        case(_){"null"};
+      }
+    }
+    else return "null";
+  };
   private func newGetTokenOwner (tid : TokenIdentifier) : async AccountIdentifier {
-    let canisterBlob = Core.TokenIdentifier.decode(tid).canister;
-    let ledger = Principal.toText(Principal.fromBlob(Blob.fromArray(canisterBlob)));
+    let ledger = await getNftLedger(tid);
     let canister : Nft.nftActor = actor (ledger);
     let aid : Nft.Result_9 = await canister.details(tid);
         switch(aid) {
@@ -1643,19 +1799,38 @@ public shared(msg) func setStatus() : async (){ // fix of states
     let tr = await canister.eimolad_icrc1_transfer(args);
   };
 
-  public shared(msg) func saveProgress (userData : UpdatedUserAccount) : async Result.Result<Text, CommonError> {
-    // assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == userData.aid);  //aid
+  public shared (msg) func mintNft (canisterId : Text, aid : AccountIdentifier, name : Text) : async [Nat32] {
+    let canister : v2.v2Actor = actor(canisterId);
+    let metadata : v2.Metadata = #nonfungible{
+        asset = name;
+        metadata = null;
+        name = name;
+        thumbnail = name;
+    };
+    let request : [(AccountIdentifier, v2.Metadata)] = [(aid, metadata)];
+    let m = await canister.ext_mint(request);
+  };
+
+  public shared(msg) func saveProgress (userData : UpdatedUserAccount, subaccount : [Nat8]) : async Result.Result<Text, CommonError> {
+    let owner = await newGetTokenOwner(userData.charId);
+    assert (AID.fromPrincipal(msg.caller, ?subaccount) == owner);
     _userAccount.put(userData.charId, userData);
     return #ok("successful saving!");
   };
 
-  public shared(msg) func updateAttributes (tid : TokenIdentifier, att : Text) : async Result.Result<Text, CommonError> {
-    // assert(AID.fromPrincipal(msg.caller, ?AID.SUBACCOUNT_ZERO) == userData.aid);  //aid
+  public shared (msg) func getCharacterAttributes (tid: TokenIdentifier) : async ?Text {
+    switch(_attributes.get(tid)){
+      case(?att){?att};
+      case(_){null};
+    };
+  };
+
+  public shared(msg) func updateAttributes (tid : TokenIdentifier, subaccount : [Nat8], att : Text) : async Result.Result<Text, CommonError> {
+    let owner = await newGetTokenOwner(tid);
+    assert (AID.fromPrincipal(msg.caller, ?subaccount) == owner);
     _attributes.put(tid, att);
     return #ok("successful saving!");
   };
-
-
  
   //==============================================================================
 
@@ -1717,7 +1892,7 @@ public shared(msg) func setStatus() : async (){ // fix of states
   };
 
   private var t : Time = Time.now();
-  private var checkTime : Time = 60 * 60 * 1000 * 1000 * 1000;//3600 000 000 000;
+  private var checkTime : Time = 60 * 60 * 1000 * 1000 * 1000;//3600 000 000 000
   private var lastCheck: Time = Time.now();
 
   private var checkWeekTime : Time = 7 * 24 * 60 * 60 * 1000 * 1000 * 1000;//7 * 86400000000000;
@@ -1725,6 +1900,10 @@ public shared(msg) func setStatus() : async (){ // fix of states
 
 
   private stable var _runHeartBeat : Bool = true;
+
+  public query func getHeartBeatStatus() : async Bool {
+    _runHeartBeat;
+  };
 
   public shared(msg) func adminKillHeartBeat(): async () {
     assert(msg.caller == Principal.fromText("xocga-4vh64-bidcg-3uxjz-fffxn-exbj4-mgbvl-hlnv6-5syll-ghhkw-eqe"));
